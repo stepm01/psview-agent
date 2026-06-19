@@ -3,7 +3,7 @@
 An autonomous recruiting agent that configures its own personality from a company's
 context and reasons through a candidate conversation. Built for the PSVIEW technical test.
 
-**Live:** <your-render-url>
+**Live:** https://psview-agent.onrender.com
 
 ## What it does
 1. **Configure** — describe a company (who it is, culture, who it hires, tone).
