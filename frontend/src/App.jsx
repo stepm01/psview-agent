@@ -112,7 +112,7 @@ const DEFAULT_A = { name: "PSVIEW", description: "autonomous AI recruiting agent
 const DEFAULT_B = { name: "Meridian Trust", description: "a 120-year-old private wealth bank", culture: "formal, precise, discreet", hiring_profiles: "senior quantitative analysts", tone: "polished and reserved" };
 
 export default function App() {
-  const [company, setCompany] = useState(DEFAULT_A);
+  const [company, setCompany] = useState({ name: "", description: "", culture: "", hiring_profiles: "", tone: "" });
   const [candidate, setCandidate] = useState({ name: "", role: "" });
   const [persona, setPersona] = useState(null);
   const [plan, setPlan] = useState(null);
