@@ -209,11 +209,11 @@ export default function App() {
             <motion.div key="form" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
               className="bg-white/80 backdrop-blur p-6 rounded-xl border border-slate-200 max-w-2xl">
               <h2 className="font-semibold mb-4">Company context</h2>
-              <Field label="Company name" value={company.name} onChange={(v) => setC("name", v)} placeholder="PSVIEW" />
-              <Field label="Who it is" value={company.description} onChange={(v) => setC("description", v)} textarea />
-              <Field label="Culture" value={company.culture} onChange={(v) => setC("culture", v)} textarea />
-              <Field label="Profiles it hires" value={company.hiring_profiles} onChange={(v) => setC("hiring_profiles", v)} />
-              <Field label="Tone" value={company.tone} onChange={(v) => setC("tone", v)} />
+              <Field label="Company name" value={company.name} onChange={(v) => setC("name", v)} placeholder="e.g. PSVIEW" />
+              <Field label="Who it is" value={company.description} onChange={(v) => setC("description", v)} placeholder="What the company does" textarea />
+              <Field label="Culture" value={company.culture} onChange={(v) => setC("culture", v)} placeholder="e.g. fast, ambitious, no BS" textarea />
+              <Field label="Profiles it hires" value={company.hiring_profiles} onChange={(v) => setC("hiring_profiles", v)} placeholder="e.g. founding engineers" />
+              <Field label="Tone" value={company.tone} onChange={(v) => setC("tone", v)} placeholder="e.g. direct and warm" />
               <div className="grid grid-cols-2 gap-3 mt-2">
                 <Field label="Candidate name" value={candidate.name} onChange={(v) => setCand("name", v)} placeholder="Sam" />
                 <Field label="Candidate role" value={candidate.role} onChange={(v) => setCand("role", v)} placeholder="full-stack engineer" />
