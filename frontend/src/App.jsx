@@ -105,6 +105,7 @@ export default function App() {
   const [schedule, setSchedule] = useState(null);
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState(null);
   const [configuring, setConfiguring] = useState(false);
   const [stageIdx, setStageIdx] = useState(0);
   const [error, setError] = useState("");
@@ -143,13 +144,15 @@ export default function App() {
   async function sendReply() {
     if (!reply.trim() || !state) return;
     setError(""); setBusy(true);
-    const r = reply; setReply("");
+    const r = reply; setReply(""); setPending(r);
     try {
       const turn = await post("/api/reply", { state, reply: r });
-      setState(turn.state);
+      setState(turn.state); setPending(null);
       setTurns((t) => [...t, { ...turn.analysis, ...turn.decision }]);
       if (turn.schedule) setSchedule(turn.schedule);
-    } catch (e) { setError(e.message); } finally { setBusy(false); }
+    } catch (e) {
+      setError(e.message); setPending(null); setReply(r);
+    } finally { setBusy(false); }
   }
 
   async function runAB() {
@@ -240,6 +243,14 @@ export default function App() {
                         </motion.div>
                       ))}
                     </AnimatePresence>
+                    {pending && (
+                      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-end">
+                        <div className="max-w-[80%] p-3 rounded-2xl text-sm bg-slate-800 text-white rounded-tr-sm opacity-80">
+                          <div className="text-[10px] mb-1 text-slate-300">candidate</div>
+                          {pending}
+                        </div>
+                      </motion.div>
+                    )}
                     {busy && <div className="flex justify-start"><div className="bg-indigo-50 rounded-2xl rounded-tl-sm"><TypingDots /></div></div>}
                     {schedule && <ScheduleCard schedule={schedule} />}
                   </div>
