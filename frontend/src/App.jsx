@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const INTENT_STYLE = {
@@ -10,6 +10,7 @@ const INTENT_STYLE = {
   ambiguous: "bg-slate-100 text-slate-600",
 };
 const SENT_STYLE = { positive: "text-green-600", neutral: "text-slate-500", negative: "text-red-600" };
+const STAGES = ["Reading your site…", "Understanding your company…", "Configuring the agent…", "Writing the first message…"];
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.12 } } };
 const item = { hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } };
@@ -25,21 +26,6 @@ function Background() {
       {blob("w-96 h-96 bg-indigo-300 -top-10 -left-10", 18, 0)}
       {blob("w-96 h-96 bg-emerald-200 -bottom-16 -right-10", 22, 2)}
       {blob("w-80 h-80 bg-sky-200 top-1/3 right-1/4", 26, 4)}
-    </div>
-  );
-}
-
-function Field({ label, value, onChange, placeholder, textarea }) {
-  return (
-    <div className="mb-3">
-      <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
-      {textarea ? (
-        <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-          className="w-full h-20 p-2.5 border border-slate-300 rounded-lg text-sm bg-white/70" />
-      ) : (
-        <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-          className="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-white/70" />
-      )}
     </div>
   );
 }
@@ -108,12 +94,10 @@ function Modal({ children, onClose, title }) {
   );
 }
 
-const DEFAULT_A = { name: "PSVIEW", description: "autonomous AI recruiting agents for IT staffing firms", culture: "fast, ambitious, no BS", hiring_profiles: "founding engineers", tone: "direct and warm" };
-const DEFAULT_B = { name: "Meridian Trust", description: "a 120-year-old private wealth bank", culture: "formal, precise, discreet", hiring_profiles: "senior quantitative analysts", tone: "polished and reserved" };
-
 export default function App() {
-  const [company, setCompany] = useState({ name: "", description: "", culture: "", hiring_profiles: "", tone: "" });
-  const [candidate, setCandidate] = useState({ name: "", role: "" });
+  const [source, setSource] = useState("");
+  const [candidateRole, setCandidateRole] = useState("");
+  const [inferred, setInferred] = useState(null);
   const [persona, setPersona] = useState(null);
   const [plan, setPlan] = useState(null);
   const [state, setState] = useState(null);
@@ -121,19 +105,25 @@ export default function App() {
   const [schedule, setSchedule] = useState(null);
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState(false);
+  const [configuring, setConfiguring] = useState(false);
+  const [stageIdx, setStageIdx] = useState(0);
   const [error, setError] = useState("");
   const [modal, setModal] = useState(null);
 
-  const [companyB, setCompanyB] = useState(DEFAULT_B);
+  const [srcA, setSrcA] = useState("PSVIEW — autonomous AI recruiting agents for IT staffing firms; fast, ambitious, no BS");
+  const [srcB, setSrcB] = useState("Meridian Trust — a 120-year-old private wealth bank; formal, precise, discreet");
   const [abReply, setAbReply] = useState("I'm happy where I am, why should I move?");
   const [abResult, setAbResult] = useState(null);
   const [abBusy, setAbBusy] = useState(false);
   const [critique, setCritique] = useState(null);
   const [critiqueBusy, setCritiqueBusy] = useState(false);
 
-  const setC = (k, v) => setCompany((s) => ({ ...s, [k]: v }));
-  const setCB = (k, v) => setCompanyB((s) => ({ ...s, [k]: v }));
-  const setCand = (k, v) => setCandidate((s) => ({ ...s, [k]: v }));
+  useEffect(() => {
+    if (!configuring) return;
+    setStageIdx(0);
+    const id = setInterval(() => setStageIdx((i) => Math.min(i + 1, STAGES.length - 1)), 1300);
+    return () => clearInterval(id);
+  }, [configuring]);
 
   async function post(path, body) {
     const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -142,11 +132,12 @@ export default function App() {
   }
 
   async function configure() {
-    setError(""); setBusy(true); setTurns([]); setSchedule(null);
+    if (!source.trim()) return;
+    setError(""); setConfiguring(true); setTurns([]); setSchedule(null);
     try {
-      const data = await post("/api/configure", { company, candidate });
-      setPersona(data.persona); setPlan(data.plan); setState(data.state);
-    } catch (e) { setError(e.message); } finally { setBusy(false); }
+      const data = await post("/api/configure", { source, candidate_role: candidateRole });
+      setInferred(data.company); setPersona(data.persona); setPlan(data.plan); setState(data.state);
+    } catch (e) { setError(e.message); } finally { setConfiguring(false); }
   }
 
   async function sendReply() {
@@ -165,13 +156,13 @@ export default function App() {
     setAbBusy(true); setAbResult(null); setError("");
     try {
       const r = abReply.trim() || "I'm happy where I am, why should I move?";
-      const run = async (comp) => {
-        const cfg = await post("/api/configure", { company: comp, candidate });
+      const run = async (src) => {
+        const cfg = await post("/api/configure", { source: src });
         const turn = await post("/api/reply", { state: cfg.state, reply: r });
-        return { persona: cfg.persona, intent: turn.analysis.intent, action: turn.decision.action, message: turn.message };
+        return { company: cfg.company, persona: cfg.persona, intent: turn.analysis.intent, action: turn.decision.action, message: turn.message };
       };
-      const [a, b] = await Promise.all([run(company), run(companyB)]);
-      setAbResult({ a, b, reply: r });
+      const [a, b] = await Promise.all([run(srcA), run(srcB)]);
+      setAbResult({ a, b });
     } catch (e) { setError(e.message); } finally { setAbBusy(false); }
   }
 
@@ -185,7 +176,7 @@ export default function App() {
     } catch (e) { setError(e.message); } finally { setCritiqueBusy(false); }
   }
 
-  function reset() { setPersona(null); setPlan(null); setState(null); setTurns([]); setSchedule(null); setError(""); }
+  function reset() { setPersona(null); setPlan(null); setState(null); setTurns([]); setSchedule(null); setInferred(null); setError(""); }
 
   const messages = state?.history || [];
   const lastTurn = turns[turns.length - 1];
@@ -197,9 +188,9 @@ export default function App() {
         <header className="mb-6 flex items-end justify-between">
           <div>
             <h1 className="text-2xl font-bold">Engagement Agent</h1>
-            <p className="text-slate-500 text-sm">An autonomous recruiting agent that configures its own personality and reasons through a conversation.</p>
+            <p className="text-slate-500 text-sm">Give it your company URL. It figures out who you are, builds its own personality, and runs the conversation.</p>
           </div>
-          {persona && <button onClick={reset} className="text-sm text-slate-500 hover:underline">Reconfigure</button>}
+          {persona && <button onClick={reset} className="text-sm text-slate-500 hover:underline">Start over</button>}
         </header>
 
         {error && <div className="mb-4 text-red-600 text-sm">Error: {error}</div>}
@@ -207,20 +198,24 @@ export default function App() {
         <AnimatePresence mode="wait">
           {!persona ? (
             <motion.div key="form" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
-              className="bg-white/80 backdrop-blur p-6 rounded-xl border border-slate-200 max-w-2xl">
-              <h2 className="font-semibold mb-4">Company context</h2>
-              <Field label="Company name" value={company.name} onChange={(v) => setC("name", v)} placeholder="e.g. PSVIEW" />
-              <Field label="Who it is" value={company.description} onChange={(v) => setC("description", v)} placeholder="What the company does" textarea />
-              <Field label="Culture" value={company.culture} onChange={(v) => setC("culture", v)} placeholder="e.g. fast, ambitious, no BS" textarea />
-              <Field label="Profiles it hires" value={company.hiring_profiles} onChange={(v) => setC("hiring_profiles", v)} placeholder="e.g. founding engineers" />
-              <Field label="Tone" value={company.tone} onChange={(v) => setC("tone", v)} placeholder="e.g. direct and warm" />
-              <div className="grid grid-cols-2 gap-3 mt-2">
-                <Field label="Candidate name" value={candidate.name} onChange={(v) => setCand("name", v)} placeholder="Sam" />
-                <Field label="Candidate role" value={candidate.role} onChange={(v) => setCand("role", v)} placeholder="full-stack engineer" />
-              </div>
-              <button onClick={configure} disabled={busy || !company.name}
-                className="mt-2 px-5 py-2.5 bg-indigo-600 text-white rounded-lg font-medium disabled:opacity-40">
-                {busy ? "Agent configuring itself…" : "Configure Agent"}
+              className="bg-white/80 backdrop-blur p-6 rounded-2xl border border-slate-200 max-w-xl">
+              <h2 className="font-semibold mb-1">Tell the agent about your company</h2>
+              <p className="text-xs text-slate-500 mb-4">Paste a URL, or just a line — it works either way.</p>
+              <input value={source} onChange={(e) => setSource(e.target.value)} onKeyDown={(e) => e.key === "Enter" && configure()}
+                placeholder="https://yourcompany.com  —  or  “a fast AI startup hiring engineers”"
+                className="w-full p-3 border border-slate-300 rounded-xl text-sm bg-white/70 mb-3" />
+              <input value={candidateRole} onChange={(e) => setCandidateRole(e.target.value)}
+                placeholder="(optional) who are you hiring? e.g. senior backend engineer"
+                className="w-full p-3 border border-slate-300 rounded-xl text-sm bg-white/70 mb-4" />
+              <button onClick={configure} disabled={configuring || !source.trim()}
+                className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-medium disabled:opacity-40 min-w-[200px]">
+                {configuring ? (
+                  <AnimatePresence mode="wait">
+                    <motion.span key={stageIdx} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}>
+                      {STAGES[stageIdx]}
+                    </motion.span>
+                  </AnimatePresence>
+                ) : "Build the agent"}
               </button>
             </motion.div>
           ) : (
@@ -239,7 +234,7 @@ export default function App() {
                           transition={{ type: "spring", stiffness: 260, damping: 22 }}
                           className={`flex ${m.sender === "agent" ? "justify-start" : "justify-end"}`}>
                           <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${m.sender === "agent" ? "bg-indigo-50 text-slate-800 rounded-tl-sm" : "bg-slate-800 text-white rounded-tr-sm"}`}>
-                            <div className={`text-[10px] mb-1 ${m.sender === "agent" ? "text-indigo-400" : "text-slate-300"}`}>{m.sender === "agent" ? persona.agent_name : (candidate.name || "candidate")}</div>
+                            <div className={`text-[10px] mb-1 ${m.sender === "agent" ? "text-indigo-400" : "text-slate-300"}`}>{m.sender === "agent" ? persona.agent_name : "candidate"}</div>
                             {m.text}
                           </div>
                         </motion.div>
@@ -257,7 +252,7 @@ export default function App() {
 
                 <div className="flex gap-3">
                   <button onClick={() => setModal("ab")} className="flex-1 px-4 py-2.5 bg-white/80 backdrop-blur border border-indigo-200 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-50">
-                    ⚖️ Compare personas (A/B)
+                    ⚖️ Compare two companies (A/B)
                   </button>
                   <button onClick={() => { setModal("critique"); runCritique(); }} className="flex-1 px-4 py-2.5 bg-white/80 backdrop-blur border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">
                     🔍 Self-critique last message
@@ -266,6 +261,17 @@ export default function App() {
               </div>
 
               <div className="lg:col-span-2 space-y-4">
+                {inferred && (
+                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="bg-white/80 backdrop-blur p-5 rounded-xl border border-slate-200">
+                    <h3 className="font-semibold text-sm mb-1">What the agent understood</h3>
+                    <div className="text-sm font-medium">{inferred.name}</div>
+                    <p className="text-xs text-slate-500 mb-2">{inferred.description}</p>
+                    <div className="text-[10px] text-slate-400">Culture: <span className="text-slate-600">{inferred.culture}</span></div>
+                    <div className="text-[10px] text-slate-400">Hires: <span className="text-slate-600">{inferred.hiring_profiles}</span></div>
+                    <div className="text-[10px] text-slate-400">Tone: <span className="text-slate-600">{inferred.tone}</span></div>
+                  </motion.div>
+                )}
+
                 <motion.div variants={stagger} initial="hidden" animate="show" className="bg-white/80 backdrop-blur p-5 rounded-xl border border-slate-200">
                   <motion.div variants={item} className="flex items-center gap-2 mb-2">
                     <div className="w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-sm">{persona.agent_name?.[0] || "A"}</div>
@@ -329,22 +335,19 @@ export default function App() {
 
       <AnimatePresence>
         {modal === "ab" && (
-          <Modal title="A/B persona morph — same reply, two companies" onClose={() => setModal(null)}>
+          <Modal title="Compare two companies — same reply, different agents" onClose={() => setModal(null)}>
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
-                <div className="text-xs font-semibold mb-1">Company A</div>
-                <Field label="Name" value={company.name} onChange={(v) => setC("name", v)} />
-                <Field label="Culture" value={company.culture} onChange={(v) => setC("culture", v)} />
-                <Field label="Tone" value={company.tone} onChange={(v) => setC("tone", v)} />
+                <div className="text-xs font-semibold mb-1">Company A (URL or a line)</div>
+                <textarea value={srcA} onChange={(e) => setSrcA(e.target.value)} className="w-full h-20 p-2.5 border border-slate-300 rounded-lg text-sm" />
               </div>
               <div>
-                <div className="text-xs font-semibold mb-1">Company B</div>
-                <Field label="Name" value={companyB.name} onChange={(v) => setCB("name", v)} />
-                <Field label="Culture" value={companyB.culture} onChange={(v) => setCB("culture", v)} />
-                <Field label="Tone" value={companyB.tone} onChange={(v) => setCB("tone", v)} />
+                <div className="text-xs font-semibold mb-1">Company B (URL or a line)</div>
+                <textarea value={srcB} onChange={(e) => setSrcB(e.target.value)} className="w-full h-20 p-2.5 border border-slate-300 rounded-lg text-sm" />
               </div>
             </div>
-            <Field label="Candidate reply (same for both)" value={abReply} onChange={setAbReply} textarea />
+            <div className="text-xs font-semibold mb-1">Candidate reply (same for both)</div>
+            <textarea value={abReply} onChange={(e) => setAbReply(e.target.value)} className="w-full h-16 p-2.5 border border-slate-300 rounded-lg text-sm mb-3" />
             <button onClick={runAB} disabled={abBusy} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium disabled:opacity-40">
               {abBusy ? "Running both agents…" : "Compare"}
             </button>
@@ -353,7 +356,7 @@ export default function App() {
                 {[abResult.a, abResult.b].map((r, i) => (
                   <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
                     className="border border-slate-200 rounded-xl p-3">
-                    <div className="font-semibold text-sm">{r.persona.agent_name}</div>
+                    <div className="font-semibold text-sm">{r.persona.agent_name} <span className="font-normal text-slate-400">· {r.company.name}</span></div>
                     <div className="text-xs text-slate-500 mb-2">{r.persona.voice}</div>
                     <div className="flex gap-1 mb-2">
                       <span className={`px-2 py-0.5 rounded-full text-xs ${INTENT_STYLE[r.intent] || "bg-slate-100"}`}>{r.intent}</span>

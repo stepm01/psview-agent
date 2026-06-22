@@ -68,6 +68,7 @@ BOUNDARIES (never violate): {boundaries}
 
 Write the NEXT message to the candidate, following this strategy exactly: {strategy}
 Stay fully in persona, reflect the REAL company context, be concise and human. No subject lines, no placeholders.
+Never invent specific numbers, percentages, metrics, or claims that aren't in the company context — if you don't have a real figure, speak qualitatively instead.
 Respond ONLY with valid JSON: {{"message": "<the message text>"}}"""
 
 def generate_message(state: ConversationState, decision: Decision, reply: str = None) -> str:

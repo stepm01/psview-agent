@@ -9,11 +9,12 @@ from schemas import (CompanyContext, CandidateProfile, ConversationState,
                      AgentTurn, Persona, OutreachPlan)
 import persona as persona_mod
 import planner as planner_mod
+import understand as understand_mod
 import engine
+import web
 
 app = FastAPI(title="PSVIEW Engagement Agent")
 
-# Dev only: lets the Vite dev server call the API cross-origin.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -21,10 +22,11 @@ app.add_middleware(
 )
 
 class ConfigureRequest(BaseModel):
-    company: CompanyContext
-    candidate: CandidateProfile = CandidateProfile()
+    source: str               # a company URL, or a line about the company
+    candidate_role: str = ""  # optional override
 
 class ConfigureResponse(BaseModel):
+    company: CompanyContext   # what the agent inferred (shown to the user)
     persona: Persona
     plan: OutreachPlan
     state: ConversationState
@@ -40,21 +42,28 @@ class CritiqueRequest(BaseModel):
 
 @app.post("/api/configure", response_model=ConfigureResponse)
 def configure(req: ConfigureRequest):
-    """Agent configures itself: persona -> plan -> opening message."""
+    """One input -> agent understands the company -> configures itself -> opens."""
     try:
-        persona = persona_mod.synthesize_persona(req.company)
-        plan = planner_mod.plan_outreach(req.company, persona, req.candidate)
-        state = ConversationState(company=req.company, persona=persona,
-                                  plan=plan, candidate=req.candidate)
+        src = req.source.strip()
+        if web.is_url(src):
+            scraped = web.fetch_company_text(src)
+            basis = scraped if len(scraped) > 40 else f"Company website: {src}"
+        else:
+            basis = src
+        company = understand_mod.understand_company(basis)
+        persona = persona_mod.synthesize_persona(company)
+        role = req.candidate_role.strip() or company.hiring_profiles or "a strong candidate"
+        candidate = CandidateProfile(name="there", role=role)
+        plan = planner_mod.plan_outreach(company, persona, candidate)
+        state = ConversationState(company=company, persona=persona, plan=plan, candidate=candidate)
         turn = engine.open_conversation(state)
-        return ConfigureResponse(persona=persona, plan=plan,
+        return ConfigureResponse(company=company, persona=persona, plan=plan,
                                  state=turn.state, opener=turn.message)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/reply", response_model=AgentTurn)
 def reply(req: ReplyRequest):
-    """One autonomous agent turn: perceive -> reason -> act. Stateless."""
     try:
         return engine.step(req.state, req.reply)
     except Exception as e:
@@ -62,7 +71,6 @@ def reply(req: ReplyRequest):
 
 @app.post("/api/critique")
 def critique(req: CritiqueRequest):
-    """Agent reflects on its own last message and revises it."""
     try:
         return engine.critique_message(req.state, req.draft)
     except Exception as e:
@@ -72,7 +80,6 @@ def critique(req: CritiqueRequest):
 def health():
     return {"status": "ok"}
 
-# serve the built React app (one process for the live demo)
 DIST = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
 if os.path.isdir(DIST):
     app.mount("/assets", StaticFiles(directory=os.path.join(DIST, "assets")), name="assets")
